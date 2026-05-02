@@ -85,7 +85,8 @@ class DefiantParser:
         return self.ast
 
     def _close_blocks_for_line(self, indent: int, line: str, line_num: int):
-        if self._current_policy() and indent == self._current_policy()["indent"]:
+        policy = self._current_policy()
+        if policy is not None and indent == policy["indent"]:
             valid_intercept = line.startswith(("before ", "during ", "after "))
             if not valid_intercept and (line.startswith("whenever ") or " action " in line) and line.endswith(":"):
                 raise DefiantParseError("E009", "Invalid intercept timing or action", line_num)
