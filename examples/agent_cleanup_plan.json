@@ -1,0 +1,69 @@
+{
+  "imports": [
+    {
+      "type": "tool",
+      "id": "FileOrganizer",
+      "library": "defiant-agents-v1"
+    }
+  ],
+  "declarations": [
+    {
+      "type": "workspace",
+      "id": "DefiantSky"
+    }
+  ],
+  "context_type": "agent",
+  "context_id": "FileOrganizer",
+  "sequences": [
+    {
+      "name": "cleanup_plan",
+      "actions": [
+        {
+          "verb": "scan",
+          "noun": "duplicates"
+        },
+        {
+          "verb": "prepare",
+          "noun": "summary"
+        },
+        {
+          "verb": "require",
+          "noun": "confirmation"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "subject": "cleanup",
+      "event": "requested",
+      "actions": [
+        {
+          "verb": "run",
+          "sequence_id": "cleanup_plan"
+        }
+      ]
+    }
+  ],
+  "policies": [
+    {
+      "intercepts": [
+        {
+          "timing": "before",
+          "action": "delete",
+          "constraints": [
+            {
+              "verb": "require",
+              "noun": "confirmation"
+            },
+            {
+              "verb": "log",
+              "target_type": "action",
+              "target_id": "full"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

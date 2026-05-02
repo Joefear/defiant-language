@@ -1,0 +1,37 @@
+{
+  "imports": [],
+  "declarations": [
+    {
+      "type": "optics",
+      "id": "user_profile"
+    }
+  ],
+  "context_type": "optics",
+  "context_id": "user_profile",
+  "sequences": [],
+  "rules": [
+    {
+      "subject": "glasses",
+      "event": "is_worn",
+      "actions": [
+        {
+          "verb": "apply",
+          "noun": "correction",
+          "from_target": "profile"
+        }
+      ]
+    },
+    {
+      "subject": "text",
+      "event": "is_detected",
+      "actions": [
+        {
+          "verb": "set",
+          "noun": "reading_zoom",
+          "value": "1.6x"
+        }
+      ]
+    }
+  ],
+  "policies": []
+}

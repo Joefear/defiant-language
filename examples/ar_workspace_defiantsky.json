@@ -1,0 +1,52 @@
+{
+  "imports": [
+    {
+      "type": "tool",
+      "id": "glove_tools",
+      "library": "defiant-ar-v1"
+    }
+  ],
+  "declarations": [
+    {
+      "type": "workspace",
+      "id": "DefiantSky"
+    },
+    {
+      "type": "window",
+      "id": "main_cad"
+    }
+  ],
+  "context_type": "workspace",
+  "context_id": "DefiantSky",
+  "sequences": [],
+  "rules": [
+    {
+      "subject": "project",
+      "event": "opens",
+      "actions": [
+        {
+          "verb": "restore",
+          "target_type": "layout",
+          "target_id": "last"
+        },
+        {
+          "verb": "anchor",
+          "target_type": "window",
+          "target_id": "main_cad",
+          "at": {
+            "literal": "distance",
+            "value": "1.2",
+            "unit": "m"
+          }
+        },
+        {
+          "verb": "enable",
+          "target_type": "tool",
+          "target_id": "glove_tools",
+          "on_device": "left_wrist"
+        }
+      ]
+    }
+  ],
+  "policies": []
+}
