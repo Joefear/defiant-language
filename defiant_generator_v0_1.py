@@ -6,7 +6,8 @@ Deterministic structured-intent-to-DL emission for the locked v0.2.4 parser.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List
+from copy import deepcopy
+from typing import Any, List
 
 from defiant_parser_v0_2_4 import DefiantParseError, DefiantParser
 
@@ -17,6 +18,7 @@ class GeneratorError(Exception):
 
 _SNAKE_CASE = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_RESERVED_IDENTIFIERS = DefiantParser.RESERVED_IDENTIFIERS
 
 
 def generate_dl(intent_record: dict) -> str:
@@ -78,8 +80,8 @@ def _validate_intent_record(intent_record: dict) -> None:
     _reject_tabs(intent_record)
     _validate_identifier(intent_record["context_type"], "context_type")
     _validate_identifier(intent_record["context_id"], "context_id")
-    _validate_not_run(intent_record["context_type"], "context_type")
-    _validate_not_run(intent_record["context_id"], "context_id")
+    _validate_not_reserved(intent_record["context_type"], "context_type")
+    _validate_not_reserved(intent_record["context_id"], "context_id")
 
     for key in ("imports", "declarations", "sequences", "rules", "policies"):
         if not isinstance(intent_record[key], list):
@@ -89,12 +91,16 @@ def _validate_intent_record(intent_record: dict) -> None:
         _validate_import(item)
     for item in intent_record["declarations"]:
         _validate_declaration(item)
+
+    sequence_names = _collect_sequence_names(intent_record["sequences"])
+    available_sequence_names: set[str] = set()
     for sequence in intent_record["sequences"]:
-        _validate_sequence(sequence)
+        _validate_sequence(sequence, available_sequence_names)
+        available_sequence_names.add(sequence["name"])
     for rule in intent_record["rules"]:
-        _validate_rule(rule)
+        _validate_rule(rule, sequence_names)
     for policy in intent_record["policies"]:
-        _validate_policy(policy)
+        _validate_policy(policy, sequence_names)
 
 
 def _validate_import(item: dict) -> None:
@@ -103,7 +109,8 @@ def _validate_import(item: dict) -> None:
         _require_key(item, key, "import")
     _validate_identifier(item["type"], "import.type")
     _validate_identifier(item["id"], "import.id")
-    _validate_not_run(item["id"], "import.id")
+    _validate_not_reserved(item["type"], "import.type")
+    _validate_not_reserved(item["id"], "import.id")
     if not isinstance(item["library"], str) or not item["library"]:
         raise GeneratorError("import.library must be a non-empty string")
 
@@ -114,35 +121,40 @@ def _validate_declaration(item: dict) -> None:
         _require_key(item, key, "declaration")
     _validate_identifier(item["type"], "declaration.type")
     _validate_identifier(item["id"], "declaration.id")
-    _validate_not_run(item["id"], "declaration.id")
+    _validate_not_reserved(item["type"], "declaration.type")
+    _validate_not_reserved(item["id"], "declaration.id")
     if "at_type" in item:
         _validate_identifier(item["at_type"], "declaration.at_type")
+        _validate_not_reserved(item["at_type"], "declaration.at_type")
         _require_key(item, "at_id", "declaration")
         _validate_token(item["at_id"], "declaration.at_id")
+        _validate_not_reserved(item["at_id"], "declaration.at_id")
     if "as" in item and not isinstance(item["as"], str):
         raise GeneratorError("declaration.as must be a string")
 
 
-def _validate_sequence(sequence: dict) -> None:
+def _validate_sequence(sequence: dict, available_sequence_names: set[str]) -> None:
     _require_dict(sequence, "sequence")
     for key in ("name", "actions"):
         _require_key(sequence, key, "sequence")
     if not isinstance(sequence["name"], str) or not _SNAKE_CASE.match(sequence["name"]):
         raise GeneratorError("So sequence names must be snake_case")
-    _validate_not_run(sequence["name"], "sequence.name")
+    _validate_not_reserved(sequence["name"], "sequence.name")
     if not isinstance(sequence["actions"], list):
         raise GeneratorError("sequence.actions must be a list")
+    local_sequence_names = available_sequence_names | {sequence["name"]}
     for action in sequence["actions"]:
         if any(key in action for key in ("trigger", "subject", "event", "rules")):
             raise GeneratorError("Conditional blocks are not allowed inside sequences")
-        _validate_action(action)
+        _validate_action(action, local_sequence_names)
 
 
-def _validate_rule(rule: dict) -> None:
+def _validate_rule(rule: dict, sequence_names: set[str]) -> None:
     _require_dict(rule, "rule")
     for key in ("subject", "event", "actions"):
         _require_key(rule, key, "rule")
     _validate_token(rule["subject"], "rule.subject")
+    _validate_not_reserved(rule["subject"], "rule.subject")
     if rule["event"] not in DefiantParser.EVENT_VERBS:
         raise GeneratorError(f"Unsupported event verb: {rule['event']}")
     if "detail" in rule:
@@ -150,10 +162,10 @@ def _validate_rule(rule: dict) -> None:
     if not isinstance(rule["actions"], list):
         raise GeneratorError("rule.actions must be a list")
     for action in rule["actions"]:
-        _validate_action(action)
+        _validate_action(action, sequence_names)
 
 
-def _validate_policy(policy: dict) -> None:
+def _validate_policy(policy: dict, sequence_names: set[str]) -> None:
     _require_dict(policy, "policy")
     _require_key(policy, "intercepts", "policy")
     if not isinstance(policy["intercepts"], list):
@@ -169,10 +181,10 @@ def _validate_policy(policy: dict) -> None:
         if not isinstance(intercept["constraints"], list):
             raise GeneratorError("intercept.constraints must be a list")
         for constraint in intercept["constraints"]:
-            _validate_action(constraint)
+            _validate_action(constraint, sequence_names)
 
 
-def _validate_action(action: dict) -> None:
+def _validate_action(action: dict, sequence_names: set[str]) -> None:
     _require_dict(action, "action")
     _require_key(action, "verb", "action")
     if action["verb"] not in DefiantParser.VERBS:
@@ -182,6 +194,9 @@ def _validate_action(action: dict) -> None:
         _require_key(action, "sequence_id", "action")
         if not isinstance(action["sequence_id"], str) or not _SNAKE_CASE.match(action["sequence_id"]):
             raise GeneratorError("run sequence_id must be snake_case")
+        _validate_not_reserved(action["sequence_id"], "action.sequence_id")
+        if action["sequence_id"] not in sequence_names:
+            raise GeneratorError(f"run sequence_id does not exist before use: {action['sequence_id']}")
         return
 
     has_typed_target = "target_type" in action or "target_id" in action
@@ -191,8 +206,10 @@ def _validate_action(action: dict) -> None:
         if action["target_type"] not in DefiantParser.TYPED_TARGETS:
             raise GeneratorError(f"Unsupported target type: {action['target_type']}")
         _validate_token(action["target_id"], "action.target_id")
+        _validate_not_reserved(action["target_id"], "action.target_id")
     elif "noun" in action:
         _validate_token(action["noun"], "action.noun")
+        _validate_not_reserved(action["noun"], "action.noun")
     else:
         raise GeneratorError("Action must include target_type/target_id, noun, or sequence_id")
 
@@ -202,6 +219,7 @@ def _validate_action(action: dict) -> None:
         _validate_at(action["at"])
     if "from_target" in action:
         _validate_token(action["from_target"], "action.from_target")
+        _validate_not_reserved(action["from_target"], "action.from_target")
 
 
 def _validate_at(value: Any) -> None:
@@ -209,10 +227,26 @@ def _validate_at(value: Any) -> None:
         raise GeneratorError("action.at must be a dict")
     _require_key(value, "literal", "action.at")
     _validate_token(value["literal"], "action.at.literal")
+    _validate_not_reserved(value["literal"], "action.at.literal")
     if "value" in value:
         _validate_token(value["value"], "action.at.value")
     if "unit" in value:
         _validate_token(value["unit"], "action.at.unit")
+
+
+def _collect_sequence_names(sequences: list) -> set[str]:
+    names: set[str] = set()
+    for sequence in sequences:
+        _require_dict(sequence, "sequence")
+        _require_key(sequence, "name", "sequence")
+        name = sequence["name"]
+        if not isinstance(name, str) or not _SNAKE_CASE.match(name):
+            raise GeneratorError("So sequence names must be snake_case")
+        _validate_not_reserved(name, "sequence.name")
+        if name in names:
+            raise GeneratorError(f"Duplicate sequence name: {name}")
+        names.add(name)
+    return names
 
 
 def _emit_import(item: dict) -> str:
@@ -281,9 +315,9 @@ def _validate_phrase(value: Any, name: str) -> None:
         raise GeneratorError(f"{name} must be a non-empty phrase")
 
 
-def _validate_not_run(value: str, name: str) -> None:
-    if value == "run":
-        raise GeneratorError(f"{name} cannot be 'run'")
+def _validate_not_reserved(value: str, name: str) -> None:
+    if value in _RESERVED_IDENTIFIERS:
+        raise GeneratorError(f"{name} cannot use reserved word '{value}'")
 
 
 def _reject_tabs(value: Any) -> None:
@@ -400,12 +434,159 @@ EXAMPLE_INTENTS = [
 ]
 
 
+INVALID_INTENTS = [
+    {
+        "name": "missing_context_type",
+        "reason": "missing required key",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_id": "FileOrganizer",
+            "sequences": [],
+            "rules": [],
+            "policies": [],
+        },
+    },
+    {
+        "name": "invalid_sequence_name_uppercase",
+        "reason": "sequence name must be snake_case",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_type": "agent",
+            "context_id": "FileOrganizer",
+            "sequences": [{"name": "Cleanup Plan", "actions": [{"verb": "scan", "noun": "duplicates"}]}],
+            "rules": [],
+            "policies": [],
+        },
+    },
+    {
+        "name": "reserved_sequence_name_run",
+        "reason": "reserved word",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_type": "agent",
+            "context_id": "FileOrganizer",
+            "sequences": [{"name": "run", "actions": [{"verb": "scan", "noun": "duplicates"}]}],
+            "rules": [],
+            "policies": [],
+        },
+    },
+    {
+        "name": "forward_sequence_reference",
+        "reason": "run sequence_id does not exist",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_type": "agent",
+            "context_id": "FileOrganizer",
+            "sequences": [],
+            "rules": [
+                {
+                    "subject": "cleanup",
+                    "event": "requested",
+                    "actions": [{"verb": "run", "sequence_id": "cleanup_plan"}],
+                }
+            ],
+            "policies": [],
+        },
+    },
+    {
+        "name": "missing_target_id",
+        "reason": "missing target_id",
+        "intent": {
+            "imports": [{"type": "tool", "id": "glove_tools", "library": "defiant-ar-v1"}],
+            "declarations": [],
+            "context_type": "workspace",
+            "context_id": "DefiantSky",
+            "sequences": [],
+            "rules": [
+                {
+                    "subject": "project",
+                    "event": "opens",
+                    "actions": [{"verb": "enable", "target_type": "tool"}],
+                }
+            ],
+            "policies": [],
+        },
+    },
+    {
+        "name": "malformed_sequence_no_actions",
+        "reason": "sequence missing actions",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_type": "agent",
+            "context_id": "FileOrganizer",
+            "sequences": [{"name": "cleanup_plan"}],
+            "rules": [],
+            "policies": [],
+        },
+    },
+    {
+        "name": "malformed_rule_no_actions",
+        "reason": "rule missing actions",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_type": "agent",
+            "context_id": "FileOrganizer",
+            "sequences": [],
+            "rules": [{"subject": "cleanup", "event": "requested"}],
+            "policies": [],
+        },
+    },
+    {
+        "name": "malformed_rule_no_trigger",
+        "reason": "rule missing trigger",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_type": "agent",
+            "context_id": "FileOrganizer",
+            "sequences": [],
+            "rules": [{"actions": [{"verb": "scan", "noun": "duplicates"}]}],
+            "policies": [],
+        },
+    },
+    {
+        "name": "malformed_action_no_verb",
+        "reason": "action missing verb",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_type": "agent",
+            "context_id": "FileOrganizer",
+            "sequences": [],
+            "rules": [
+                {
+                    "subject": "cleanup",
+                    "event": "requested",
+                    "actions": [{"noun": "duplicates"}],
+                }
+            ],
+            "policies": [],
+        },
+    },
+]
+
+
 def run_test_harness() -> dict:
     results = []
     for example in EXAMPLE_INTENTS:
-        result = generate_and_validate(example["intent"])
+        result = generate_and_validate(deepcopy(example["intent"]))
         results.append({"name": example["name"], "ok": result["ok"]})
         print(f'PASS {example["name"]}')
+    for example in INVALID_INTENTS:
+        try:
+            generate_and_validate(deepcopy(example["intent"]))
+        except GeneratorError:
+            results.append({"name": example["name"], "ok": True})
+            print(f'FAIL {example["name"]} (expected {example["reason"]})')
+        else:
+            results.append({"name": example["name"], "ok": False})
+            print(f'UNEXPECTED PASS {example["name"]}')
     return {"ok": all(item["ok"] for item in results), "results": results}
 
 
