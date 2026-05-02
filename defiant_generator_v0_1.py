@@ -151,6 +151,13 @@ def _validate_sequence(sequence: dict, available_sequence_names: set[str]) -> No
 
 def _validate_rule(rule: dict, sequence_names: set[str]) -> None:
     _require_dict(rule, "rule")
+    if rule.get("else") is True:
+        _require_key(rule, "actions", "rule")
+        if not isinstance(rule["actions"], list):
+            raise GeneratorError("rule.actions must be a list")
+        for action in rule["actions"]:
+            _validate_action(action, sequence_names)
+        return
     for key in ("subject", "event", "actions"):
         _require_key(rule, key, "rule")
     _validate_token(rule["subject"], "rule.subject")
@@ -199,7 +206,7 @@ def _validate_action(action: dict, sequence_names: set[str]) -> None:
             raise GeneratorError(f"run sequence_id does not exist before use: {action['sequence_id']}")
         return
 
-    has_typed_target = "target_type" in action or "target_id" in action
+    has_typed_target = "target_id" in action or ("target_type" in action and "target_literal" not in action)
     if has_typed_target:
         for key in ("target_type", "target_id"):
             _require_key(action, key, "action")
@@ -207,12 +214,22 @@ def _validate_action(action: dict, sequence_names: set[str]) -> None:
             raise GeneratorError(f"Unsupported target type: {action['target_type']}")
         _validate_token(action["target_id"], "action.target_id")
         _validate_not_reserved(action["target_id"], "action.target_id")
+    elif "target_literal" in action:
+        for key in ("target_type", "target_literal"):
+            _require_key(action, key, "action")
+        if action["target_type"] not in DefiantParser.TYPED_TARGETS:
+            raise GeneratorError(f"Unsupported target type: {action['target_type']}")
+        _validate_literal(action["target_literal"], "action.target_literal")
     elif "noun" in action:
         _validate_token(action["noun"], "action.noun")
         _validate_not_reserved(action["noun"], "action.noun")
     else:
         raise GeneratorError("Action must include target_type/target_id, noun, or sequence_id")
 
+    if "value" in action:
+        _validate_token(action["value"], "action.value")
+        if action["verb"] in {"increase", "raise"} and not re.match(r"^-?\d+(?:\.\d+)?$", action["value"]):
+            raise GeneratorError("increase/raise value must be numeric")
     if "on_device" in action and action["on_device"] not in DefiantParser.DEVICE_POSITIONS:
         raise GeneratorError(f"Unsupported device position: {action['on_device']}")
     if "at" in action:
@@ -263,6 +280,8 @@ def _emit_declaration(item: dict) -> str:
 
 
 def _emit_rule_header(rule: dict) -> str:
+    if rule.get("else") is True:
+        return "else"
     header = f'when {rule["subject"]} {rule["event"]}'
     if "detail" in rule:
         header += f' {rule["detail"]}'
@@ -273,11 +292,15 @@ def _emit_action(action: dict) -> str:
     if action["verb"] == "run":
         return f'run {action["sequence_id"]}'
 
-    if "target_type" in action:
+    if "target_literal" in action:
+        line = f'{action["verb"]} {action["target_type"]} "{action["target_literal"]}"'
+    elif "target_type" in action:
         line = f'{action["verb"]} {action["target_type"]} {action["target_id"]}'
     else:
         line = f'{action["verb"]} {action["noun"]}'
 
+    if "value" in action:
+        line += f' {action["value"]}'
     if "on_device" in action:
         line += f' on device {action["on_device"]}'
     if "at" in action:
@@ -315,6 +338,11 @@ def _validate_phrase(value: Any, name: str) -> None:
         raise GeneratorError(f"{name} must be a non-empty phrase")
 
 
+def _validate_literal(value: Any, name: str) -> None:
+    if not isinstance(value, str) or not value.strip() or '"' in value or "\n" in value:
+        raise GeneratorError(f"{name} must be a non-empty literal without quotes or newlines")
+
+
 def _validate_not_reserved(value: str, name: str) -> None:
     if value in _RESERVED_IDENTIFIERS:
         raise GeneratorError(f"{name} cannot use reserved word '{value}'")
@@ -333,6 +361,62 @@ def _reject_tabs(value: Any) -> None:
 
 
 EXAMPLE_INTENTS = [
+    {
+        "name": "scene_forest_clearing_entry",
+        "intent": {
+            "imports": [{"type": "scene", "id": "ForestClearing", "library": "defiant-game-v1"}],
+            "declarations": [
+                {"type": "NPC", "id": "old_hunter", "at_type": "location", "at_id": "trail_start"},
+                {"type": "sound", "id": "distant_branch_snap", "as": "distant_branch_snap"},
+            ],
+            "context_type": "scene",
+            "context_id": "ForestClearing",
+            "sequences": [],
+            "rules": [
+                {
+                    "subject": "player",
+                    "event": "enters",
+                    "actions": [
+                        {"verb": "play", "target_type": "sound", "target_id": "distant_branch_snap"},
+                        {
+                            "verb": "spawn",
+                            "target_type": "NPC",
+                            "target_id": "old_hunter",
+                            "at": {"literal": "location", "value": "trail_start"},
+                        },
+                        {"verb": "show", "target_type": "message", "target_literal": "The air feels wrong."},
+                    ],
+                }
+            ],
+            "policies": [],
+        },
+    },
+    {
+        "name": "scene_lantern_else",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_type": "scene",
+            "context_id": "ForestClearing",
+            "sequences": [],
+            "rules": [
+                {
+                    "subject": "player",
+                    "event": "has",
+                    "detail": "item lantern",
+                    "actions": [
+                        {"verb": "reveal", "target_type": "path", "target_id": "overgrown_ruins"},
+                        {"verb": "increase", "noun": "visibility", "value": "30"},
+                    ],
+                },
+                {
+                    "else": True,
+                    "actions": [{"verb": "raise", "noun": "tension", "value": "15"}],
+                },
+            ],
+            "policies": [],
+        },
+    },
     {
         "name": "ar_workspace_defiantsky_tool_activation",
         "intent": {
@@ -425,8 +509,76 @@ EXAMPLE_INTENTS = [
                 {
                     "subject": "text",
                     "event": "is_detected",
-                    "actions": [{"verb": "set", "noun": "reading_zoom", "at": {"literal": "1.6x"}}],
+                    "actions": [{"verb": "set", "noun": "reading_zoom", "value": "1.6x"}],
                 },
+            ],
+            "policies": [],
+        },
+    },
+    {
+        "name": "agent_file_organizer_policy",
+        "intent": {
+            "imports": [],
+            "declarations": [],
+            "context_type": "agent",
+            "context_id": "FileOrganizer",
+            "sequences": [],
+            "rules": [
+                {
+                    "subject": "cleanup",
+                    "event": "requested",
+                    "actions": [
+                        {"verb": "scan", "noun": "duplicates"},
+                        {"verb": "prepare", "noun": "summary"},
+                    ],
+                }
+            ],
+            "policies": [
+                {
+                    "intercepts": [
+                        {
+                            "timing": "before",
+                            "action": "delete",
+                            "constraints": [
+                                {"verb": "require", "noun": "confirmation"},
+                                {"verb": "log", "target_type": "action", "target_id": "full"},
+                            ],
+                        }
+                    ]
+                }
+            ],
+        },
+    },
+    {
+        "name": "ar_workspace_tools_sequence",
+        "intent": {
+            "imports": [{"type": "tool", "id": "glove_tools", "library": "defiant-ar-v1"}],
+            "declarations": [
+                {"type": "workspace", "id": "DefiantSky"},
+                {"type": "window", "id": "main_cad"},
+                {"type": "window", "id": "issue_panel"},
+            ],
+            "context_type": "workspace",
+            "context_id": "DefiantSky",
+            "sequences": [
+                {
+                    "name": "tools",
+                    "actions": [
+                        {"verb": "enable", "target_type": "tool", "target_id": "main_cad"},
+                        {"verb": "enable", "target_type": "tool", "target_id": "issue_panel"},
+                        {"verb": "enable", "target_type": "tool", "target_id": "glove_tools"},
+                    ],
+                }
+            ],
+            "rules": [
+                {
+                    "subject": "project",
+                    "event": "opens",
+                    "actions": [
+                        {"verb": "restore", "target_type": "layout", "target_id": "last"},
+                        {"verb": "run", "sequence_id": "tools"},
+                    ],
+                }
             ],
             "policies": [],
         },
