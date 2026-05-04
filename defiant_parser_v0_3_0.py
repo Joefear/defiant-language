@@ -1,6 +1,6 @@
 """Defiant Language v0.3.0 — Complete Block-Aware Parser
 Fully executable. Zero placeholders. All methods implemented.
-Includes full test harness with 7 valid examples + 15 stress cases.
+Includes full parser test harness.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ class DefiantParser:
     HIGH_RISK_ACTIONS = {"delete", "modify", "send", "execute", "share", "install", "record", "access"}
     VERBS = {"play", "spawn", "show", "reveal", "increase", "raise", "trigger",
              "restore", "anchor", "enable", "disable", "highlight",
-             "apply", "set", "scan", "prepare", "require", "log", "run",
+             "apply", "set", "select", "scan", "prepare", "require", "log", "run",
              "block", "limit", "notify", "delete", "modify", "send", "execute",
              "share", "install", "record", "access"}
     EVENT_VERBS = {"opens", "enters", "is_worn", "is_detected", "requested",
@@ -325,7 +325,7 @@ class DefiantParser:
     # ==================================================================
     # FULL TEST HARNESS (no placeholders)
     # ==================================================================
-    VALID_EXAMPLES = [  # exactly the 7 spec examples
+    VALID_EXAMPLES = [
         """import scene ForestClearing from library "defiant-game-v1"
 define NPC old_hunter at location trail_start
 define sound distant_branch_snap as "distant_branch_snap"
@@ -413,6 +413,13 @@ So tools:
 when project opens:
     restore layout last
     run tools
+""",
+        """define component bracket_assembly
+
+Hey workspace DefiantSky,
+
+when project opens:
+    select component bracket_assembly
 """
     ]
 
@@ -467,30 +474,33 @@ destroy file x""", "E001"),
 You know what,
 whenever action delete:
     require confirmation""", "E009"),
+        ("""Hey workspace,
+when project opens:
+    select""", "E016"),
     ]
 
     def run_test_harness(self):
         print("=== Defiant Language v0.3.0 — Full Test Harness ===")
         print(f"Testing {len(self.VALID_EXAMPLES)} valid examples + {len(self.STRESS_CASES)} stress cases...\n")
 
-        print("=== 7 Valid Spec Examples ===")
+        print(f"=== {len(self.VALID_EXAMPLES)} Valid Parser Examples ===")
         for i, src in enumerate(self.VALID_EXAMPLES, 1):
             try:
                 self.parse(src)
-                print(f"✅ Valid Example {i}: PASS")
+                print(f"PASS Valid Example {i}")
             except DefiantParseError as e:
-                print(f"❌ Valid Example {i}: FAIL ({e.code})")
+                print(f"FAIL Valid Example {i}: {e.code}")
 
-        print("\n=== 15 Stress Scenarios ===")
+        print(f"\n=== {len(self.STRESS_CASES)} Stress Scenarios ===")
         for i, (src, expected) in enumerate(self.STRESS_CASES, 1):
             try:
                 self.parse(src)
-                print(f"❌ Stress {i}: Expected {expected} but parsed OK")
+                print(f"FAIL Stress {i}: Expected {expected} but parsed OK")
             except DefiantParseError as e:
                 status = "PASS" if e.code == expected else f"FAIL (got {e.code})"
-                print(f"✅ Stress {i}: {status}")
+                print(f"{status} Stress {i}")
 
-        print("\n🎉 v0.3.0 Parser fully validated and locked.")
+        print("\nv0.3.0 Parser fully validated and locked.")
 
 
 if __name__ == "__main__":
