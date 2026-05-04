@@ -1,3 +1,14 @@
+"""
+LEGACY / FUTURE LAYER PROTOTYPE
+
+This file represents an early natural-language-to-intent sketch.
+It is NOT part of the deterministic DL pipeline.
+
+Do not import or use in production flow.
+
+Future role: NL normalizer layer (not yet implemented).
+"""
+
 from defiant_parser_v0_2_4 import DefiantParser
 
 def generate_dl(intent: str) -> str:

@@ -1,3 +1,10 @@
+"""
+LEGACY EXAMPLES
+
+The canonical examples/*.json files are authoritative.
+This module is retained only as an early parser demonstration.
+"""
+
 from defiant_parser_v0_2_4 import DefiantParser
 
 parser = DefiantParser()
