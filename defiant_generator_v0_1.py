@@ -9,7 +9,7 @@ import re
 from copy import deepcopy
 from typing import Any, List
 
-from defiant_parser_v0_2_4 import DefiantParseError, DefiantParser
+from defiant_parser_v0_2_5 import DefiantParseError, DefiantParser
 
 
 class GeneratorError(Exception):
