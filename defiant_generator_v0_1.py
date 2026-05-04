@@ -1,6 +1,6 @@
 """Defiant Language Generator v0.1.
 
-Deterministic structured-intent-to-DL emission for the locked v0.2.4 parser.
+Deterministic structured-intent-to-DL emission for the locked v0.3.0 parser.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ import re
 from copy import deepcopy
 from typing import Any, List
 
-from defiant_parser_v0_2_5 import DefiantParseError, DefiantParser
+from defiant_parser_v0_3_0 import DefiantParseError, DefiantParser
 
 
 class GeneratorError(Exception):
@@ -158,14 +158,24 @@ def _validate_rule(rule: dict, sequence_names: set[str]) -> None:
         for action in rule["actions"]:
             _validate_action(action, sequence_names)
         return
-    for key in ("subject", "event", "actions"):
-        _require_key(rule, key, "rule")
-    _validate_token(rule["subject"], "rule.subject")
-    _validate_not_reserved(rule["subject"], "rule.subject")
-    if rule["event"] not in DefiantParser.EVENT_VERBS:
-        raise GeneratorError(f"Unsupported event verb: {rule['event']}")
-    if "detail" in rule:
-        _validate_phrase(rule["detail"], "rule.detail")
+    if "trigger" in rule:
+        _require_dict(rule["trigger"], "rule.trigger")
+        trigger = rule["trigger"]
+        for key in ("subject", "event"):
+            _require_key(trigger, key, "rule.trigger")
+        detail = trigger.get("detail")
+    else:
+        for key in ("subject", "event"):
+            _require_key(rule, key, "rule")
+        trigger = rule
+        detail = rule.get("detail")
+    _require_key(rule, "actions", "rule")
+    _validate_token(trigger["subject"], "rule.subject")
+    _validate_not_reserved(trigger["subject"], "rule.subject")
+    if trigger["event"] not in DefiantParser.EVENT_VERBS:
+        raise GeneratorError(f"Unsupported event verb: {trigger['event']}")
+    if detail is not None:
+        _validate_phrase(detail, "rule.detail")
     if not isinstance(rule["actions"], list):
         raise GeneratorError("rule.actions must be a list")
     for action in rule["actions"]:
@@ -206,11 +216,23 @@ def _validate_action(action: dict, sequence_names: set[str]) -> None:
             raise GeneratorError(f"run sequence_id does not exist before use: {action['sequence_id']}")
         return
 
+    if action["verb"] == "bind":
+        for key in ("gesture_id", "sequence_id", "device"):
+            _require_key(action, key, "action")
+        _validate_token(action["gesture_id"], "action.gesture_id")
+        _validate_not_reserved(action["gesture_id"], "action.gesture_id")
+        if not isinstance(action["sequence_id"], str) or not _SNAKE_CASE.match(action["sequence_id"]):
+            raise GeneratorError("bind sequence_id must be snake_case")
+        _validate_not_reserved(action["sequence_id"], "action.sequence_id")
+        if action["device"] not in DefiantParser.DEVICE_POSITIONS:
+            raise GeneratorError(f"Unsupported device position: {action['device']}")
+        return
+
     has_typed_target = "target_id" in action or ("target_type" in action and "target_literal" not in action)
     if has_typed_target:
         for key in ("target_type", "target_id"):
             _require_key(action, key, "action")
-        if action["target_type"] not in DefiantParser.TYPED_TARGETS:
+        if action["target_type"] not in DefiantParser.TYPED_TARGETS and action["target_type"] != "component":
             raise GeneratorError(f"Unsupported target type: {action['target_type']}")
         _validate_token(action["target_id"], "action.target_id")
         _validate_not_reserved(action["target_id"], "action.target_id")
@@ -282,15 +304,19 @@ def _emit_declaration(item: dict) -> str:
 def _emit_rule_header(rule: dict) -> str:
     if rule.get("else") is True:
         return "else"
-    header = f'when {rule["subject"]} {rule["event"]}'
-    if "detail" in rule:
-        header += f' {rule["detail"]}'
+    trigger = rule.get("trigger", rule)
+    header = f'when {trigger["subject"]} {trigger["event"]}'
+    detail = trigger.get("detail", rule.get("detail"))
+    if detail is not None:
+        header += f' {detail}'
     return header
 
 
 def _emit_action(action: dict) -> str:
     if action["verb"] == "run":
         return f'run {action["sequence_id"]}'
+    if action["verb"] == "bind":
+        return f'bind gesture {action["gesture_id"]} to {action["sequence_id"]} on device {action["device"]}'
 
     if "target_literal" in action:
         line = f'{action["verb"]} {action["target_type"]} "{action["target_literal"]}"'
@@ -577,6 +603,38 @@ EXAMPLE_INTENTS = [
                     "actions": [
                         {"verb": "restore", "target_type": "layout", "target_id": "last"},
                         {"verb": "run", "sequence_id": "tools"},
+                    ],
+                }
+            ],
+            "policies": [],
+        },
+    },
+    {
+        "name": "ar_workspace_v0_3_select_bind",
+        "intent": {
+            "imports": [],
+            "declarations": [
+                {"type": "gesture", "id": "pinch_select"},
+                {"type": "component", "id": "bracket_assembly"},
+            ],
+            "context_type": "workspace",
+            "context_id": "DefiantSky",
+            "sequences": [],
+            "rules": [
+                {
+                    "trigger": {"subject": "project", "event": "opens"},
+                    "actions": [
+                        {
+                            "verb": "select",
+                            "target_type": "component",
+                            "target_id": "bracket_assembly",
+                        },
+                        {
+                            "verb": "bind",
+                            "gesture_id": "pinch_select",
+                            "sequence_id": "select_part",
+                            "device": "left_hand",
+                        },
                     ],
                 }
             ],
