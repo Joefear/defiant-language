@@ -1,4 +1,4 @@
-"""Defiant Language v0.2.4 — Complete Block-Aware Parser
+"""Defiant Language v0.2.5 — Complete Block-Aware Parser
 Fully executable. Zero placeholders. All methods implemented.
 Includes full test harness with 7 valid examples + 15 stress cases.
 """
@@ -468,7 +468,7 @@ whenever action delete:
     ]
 
     def run_test_harness(self):
-        print("=== Defiant Language v0.2.4 — Full Test Harness ===")
+        print("=== Defiant Language v0.2.5 — Full Test Harness ===")
         print(f"Testing {len(self.VALID_EXAMPLES)} valid examples + {len(self.STRESS_CASES)} stress cases...\n")
 
         print("=== 7 Valid Spec Examples ===")
@@ -488,7 +488,7 @@ whenever action delete:
                 status = "PASS" if e.code == expected else f"FAIL (got {e.code})"
                 print(f"✅ Stress {i}: {status}")
 
-        print("\n🎉 v0.2.4 Parser fully validated and locked.")
+        print("\n🎉 v0.2.5 Parser fully validated and locked.")
 
 
 if __name__ == "__main__":
