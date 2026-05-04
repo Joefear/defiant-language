@@ -18,7 +18,7 @@ class DefiantParser:
     HIGH_RISK_ACTIONS = {"delete", "modify", "send", "execute", "share", "install", "record", "access"}
     VERBS = {"play", "spawn", "show", "reveal", "increase", "raise", "trigger",
              "restore", "anchor", "enable", "disable", "highlight",
-             "apply", "set", "select", "scan", "prepare", "require", "log", "run",
+             "apply", "set", "select", "bind", "scan", "prepare", "require", "log", "run",
              "block", "limit", "notify", "delete", "modify", "send", "execute",
              "share", "install", "record", "access"}
     EVENT_VERBS = {"opens", "enters", "is_worn", "is_detected", "requested",
@@ -44,9 +44,9 @@ class DefiantParser:
         "gesture": {"type": "noun"},
         "component": {"type": "noun"},
     }
-    TYPED_TARGETS = {"sound", "NPC", "message", "path", "layout", "window",
+    TYPED_TARGETS = {"sound", "NPC", "message", "path", "layout", "window", "gesture",
                      "tool", "file", "action", "item"}
-    DECLARED_OR_KNOWN_TARGET_TYPES = {"sound", "NPC", "layout", "window", "tool", "file", "action"}
+    DECLARED_OR_KNOWN_TARGET_TYPES = {"sound", "NPC", "layout", "window", "tool", "file", "action", "gesture"}
     RESERVED_IDENTIFIERS = VERBS | {"when", "if", "else", "So", "Hey", "define", "import", "action"}
 
     def __init__(self):
@@ -293,6 +293,14 @@ class DefiantParser:
                 raise DefiantParseError("E011", "Expected numeric value", line_num)
             return {"type": "property", "id": parts[1], "value": parts[2]}
 
+        if verb == "bind":
+            if len(parts) != 8 or parts[1] != "gesture" or parts[3] != "to" or parts[5:7] != ["on", "device"]:
+                raise DefiantParseError("E001", "Malformed bind statement", line_num)
+            if parts[7] not in self.DEVICE_POSITIONS:
+                raise DefiantParseError("E012", f"Invalid device position '{parts[7]}'", line_num)
+            self._require_declared_or_known(parts[2], line_num)
+            return {"type": "gesture", "id": parts[2], "modifiers": parts[3:]}
+
         if "on" in parts:
             on_index = parts.index("on")
             if on_index + 2 < len(parts) and parts[on_index + 1] == "device":
@@ -420,6 +428,13 @@ Hey workspace DefiantSky,
 
 when project opens:
     select component bracket_assembly
+""",
+        """define gesture pinch_select
+
+Hey workspace DefiantSky,
+
+when glove_tools is_worn:
+    bind gesture pinch_select to select_part on device left_hand
 """
     ]
 
@@ -477,6 +492,24 @@ whenever action delete:
         ("""Hey workspace,
 when project opens:
     select""", "E016"),
+        ("""define gesture pinch_select
+
+Hey workspace DefiantSky,
+
+when glove_tools is_worn:
+    bind gesture pinch_select to select_part""", "E001"),
+        ("""define component bracket_assembly
+
+Hey workspace DefiantSky,
+
+when glove_tools is_worn:
+    bind component bracket_assembly to select_part on device left_hand""", "E001"),
+        ("""define gesture pinch_select
+
+Hey workspace DefiantSky,
+
+when glove_tools is_worn:
+    bind gesture pinch_select on device left_hand""", "E001"),
     ]
 
     def run_test_harness(self):
