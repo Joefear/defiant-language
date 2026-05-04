@@ -2,11 +2,11 @@
 
 ## Purpose
 
-DL Generator v0.1.2 deterministically converts structured intent records into Defiant Language source text compatible with the locked DL v0.2.4 parser.
+DL Generator v0.1.2 deterministically converts structured intent records into Defiant Language source text compatible with the locked DL v0.3.0 parser.
 
 ## Input Contract
 
-The generator accepts a structured Python `dict` intent record. The record must describe supported DL v0.2.4 constructs using explicit fields rather than free-form natural language.
+The generator accepts a structured Python `dict` intent record. The record must describe supported DL v0.3.0 constructs using explicit fields rather than free-form natural language.
 
 Supported top-level intent fields:
 
@@ -20,7 +20,7 @@ Supported top-level intent fields:
 
 ## Output Contract
 
-The generator emits a Defiant Language v0.2.4 string. Output is deterministic and ordered as:
+The generator emits a Defiant Language v0.3.0 string. Output is deterministic and ordered as:
 
 - imports
 - declarations
@@ -43,14 +43,14 @@ If parser validation fails, the generator treats that as a generator-layer failu
 
 - No LLM generation
 - No parser modification
-- No v0.3 verbs or types
+- No vocabulary beyond the locked v0.3 additions
 - No execution layer
 
 ## Harness Coverage
 
 The current harness covers:
 
-- 7/7 parser valid examples
+- 8 valid examples (including v0.3 example)
 - 9 negative intent cases
 
 ## Current Commit Reference
@@ -62,3 +62,18 @@ The current harness covers:
 ```bash
 python defiant_generator_v0_1.py
 ```
+
+## v0.3 Vocabulary Support
+
+The generator now supports Defiant Language v0.3 vocabulary additions:
+
+Types:
+- gesture
+- component
+
+Verbs:
+- select
+- bind
+
+Parser baseline:
+- defiant_parser_v0_3_0.py
