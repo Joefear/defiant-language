@@ -11,7 +11,7 @@ import pprint
 import sys
 
 from defiant_generator_v0_1 import GeneratorError, generate_and_validate
-from defiant_parser_v0_2_5 import DefiantParseError
+from defiant_parser_v0_3_0 import DefiantParseError
 
 
 def main() -> int:
